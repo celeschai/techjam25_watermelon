@@ -29,14 +29,7 @@ spam_reviews = [
     "I had a decent haircut. For a truly amazing look, check out our salon. We have a special offer for new clients!"
 ]
 
-irrelevant_keywords = [
-    "my new phone", "my dog", "my cat", "I just bought", "I went to the store",
-    "speaking of", "by the way", "on a different note", "this reminds me of",
-    "I love", "I hate", "my friend", "the news", "politics", "social media",
-    "my favorite show", "video games", "sports team", "school", "work",
-    "my family", "last night", "my hobbies", "my car", "my job", "the weather",
-    "the economy", "the election", "COVID-19", "the holidays"
-]
+irrelevant_keywords = []
 
 irrelevant_reviews = [
     "The coffee here is okay, but I can't believe how expensive my new laptop was. I wish I had waited for the Black Friday sale. Anyway, the chairs here are a bit wobbly.",
