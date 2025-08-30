@@ -34,7 +34,7 @@ pipe = pipeline(
 )
 
 df = pd.read_csv("rant.csv")   # must have "review_text" column
-# df = df.head(10).copy()  # Take first 10 rows and create a copy
+df = df.head(10).copy()  # Take first 10 rows and create a copy
 
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 POLICIES = ["ads", "irrelevant", "no_visit_rant"]
@@ -51,21 +51,42 @@ IMAGE_ANALYSIS_PROMPT = (
 
 ADS_PROMPT = (
     "You are a moderation system for business reviews.\n"
-    "Determine if the given review contains explicit advertisement content.\n"
-    "Clear signs: phone number, address, promoting another business\n"
+    "Determine if the given review contains explicit advertisement content.\n\n"
+    "Clear signs of ads violations:\n"
+    "- Provides website, phone number, or contact information\n"
+    "- Promotes external businesses or services\n"
+    "- Contains marketing language or promotional content\n"
+    "- Offers discounts, deals, or promotional codes\n\n"
+    "Examples of ads violations:\n"
+    f"{chr(10).join(['• ' + review[:100] + '...' for review in spam_reviews[:3]])}\n\n"
     "Respond with ONLY a JSON object: {\"is_ad\": true/false}"
 )
 
 IRRELEVANT_PROMPT = (
     "You are a moderation system for business reviews.\n"
-    "Determine if the given review text is irrelevant to the business.\n"
+    "Determine if the given review text is irrelevant to the business.\n\n"
+    "User sentiment is considered relevant.\n"
+    "A review is irrelevant if it:\n"
+    "- Only talks about unrelated topics\n"
+    "- Discusses personal issues not related to the business\n"
+    "- Comments on unrelated events or situations\n"
+    "Examples of irrelevant violations:\n"
+    f"{chr(10).join(['• ' + review[:100] + '...' for review in irrelevant_reviews[:3]])}\n\n"
     "Respond with ONLY a JSON object: {\"is_irrelevant\": true/false}"
 )
 
 NO_VISIT_RANT_PROMPT = (
     "You are a moderation system for business reviews.\n"
-    "Determine if the given review is from someone who never visited the place.\n"
-    "Keywords: never been, heard from, passed by.\n"
+    "Determine if the given review is from someone who never visited the place.\n\n"
+    "User expressing their sentiment does not mean they have never visited"
+    "A no_visit_rant violation occurs when the review:\n"
+    "- Explicitly states the person has never been to the place\n"
+    "- Contains second-hand information or hearsay\n"
+    "- Is based on external reports or rumors\n"
+    "- Expresses opinions without firsthand experience\n\n"
+    "Examples of no_visit_rant violations:\n"
+    f"{chr(10).join(['• ' + review[:100] + '...' for review in non_visitor_reviews[:10]])}\n\n"
+    "Keywords: never been here, I haven't visited, looks awful from the outside, from what I hear, I'm not going to visit, I've decided not to go, from the looks of it, I heard a rumor, I just drove by\n"
     "Respond with ONLY a JSON object: {\"is_no_visit_rant\": true/false}"
 )
 
@@ -141,93 +162,12 @@ def create_business_info(row):
     if pd.notna(row.get("category")) and str(row.get("category")).strip():
         parts.append(f"Category: {str(row.get('category')).strip()}")
     
-    # Check if description is empty and use image to generate one if available
-    if pd.notna(row.get("description")) and str(row.get("description")).strip():
-        parts.append(f"Description: {str(row.get('description')).strip()}")
-    elif pd.notna(row.get("image")) and str(row.get("image")).strip():
-        # Generate description from image using Gemma
-        image_url = str(row.get("image")).strip()
-        print(f"Generating description from image for business: {row.get('name', 'Unknown')}")
-        generated_description = generate_description_from_image(image_url)
-        if generated_description:
-            parts.append(f"Description: {generated_description}")
-            print(f"Generated description: {generated_description}")
-        else:
-            print(f"Failed to generate description from image")
-    
     if not parts:
         return "Location Information: Not available"
     
     return "\n".join(parts)
 
-def generate_description_from_image(image_url):
-    """Use Gemma to generate a business description from an image"""
-    global description_cache
-    
-    if not image_url or pd.isna(image_url):
-        return None
-    
-    # Check cache first
-    if image_url in description_cache:
-        print(f"Using cached description for image: {image_url[:50]}...")
-        return description_cache[image_url]
-    
-    # Download the image
-    image = download_image(image_url)
-    if image is None:
-        return None
-    
-    # Create prompt for business description generation
-    DESCRIPTION_PROMPT = (
-        "You are analyzing an image of a business or location.\n"
-        "Based on what you see in the image, provide a brief, factual description of this business or location.\n"
-        "Focus on:\n"
-        "- What type of business this appears to be\n"
-        "- What services or products they likely offer, why would one be here for?\n"
-        "Keep your description to 1 sentence maximum. Be factual and avoid speculation.\n"
-        "Respond with ONLY the description text, no additional formatting or explanations."
-    )
-    
-    messages = [
-        {
-            "role": "system",
-            "content": [{"type": "text", "text": DESCRIPTION_PROMPT}]
-        },
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "Please describe this business or location based on the image:"},
-                {"type": "image", "image": image}
-            ]
-        }
-    ]
-    
-    try:
-        prompt = tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True
-        )
-        
-        out = pipe(
-            prompt,
-            max_new_tokens=128,
-            return_full_text=False
-        )
-        
-        generated_description = out[0]["generated_text"].strip()
-        
-        # Clean up the response - remove any quotes or extra formatting
-        generated_description = generated_description.strip('"').strip("'")
-        
-        # Cache the result
-        description_cache[image_url] = generated_description
-        
-        return generated_description
-        
-    except Exception as e:
-        print(f"Error generating description from image: {e}")
-        return None
+
 
 def llm_evaluate_helpfulness(review_text: str, business_info: str) -> str:
     """Use LLM to evaluate overall helpfulness based on added value compared to basic Google info"""
@@ -521,8 +461,7 @@ no_visit_rant_outputs = []
 sensibility_outputs = []
 image_outputs = []
 
-# Cache for generated descriptions to avoid regenerating the same image descriptions
-description_cache = {}
+
 
 for _, row in df.iterrows():
     review = row.get("text", "")
@@ -573,6 +512,7 @@ print(f"Average time per review: {total_pipeline_time/len(ads_outputs):.2f} seco
 
 
 
+# Save the pipeline output
 df.to_csv("pipeline_output.csv", index=False)
 
 print("\n=== Final Output Preview ===")

@@ -10,7 +10,7 @@ import streamlit as st
 # ==============================
 INPUT_COLUMNS = [
     "user_id","time","rating","text","pics_collapsed","resp_collapsed",
-    "name","description","category","url"
+    "name","category"
 ]
 OUTPUT_COLUMNS = [
     "review_id","user_id","time","rating","text","pics_collapsed","resp_collapsed",
