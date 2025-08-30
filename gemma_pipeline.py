@@ -8,7 +8,7 @@ from io import BytesIO
 
 from dotenv import load_dotenv
 from huggingface_hub import login
-from keywords_examples import irrelevant_reviews, non_visitor_reviews, spam_reviews
+from examples import irrelevant_reviews, non_visitor_reviews, spam_reviews
 import pandas as pd
 import torch
 from transformers import AutoProcessor, AutoTokenizer, pipeline
@@ -33,45 +33,47 @@ pipe = pipeline(
     device=device                 # works for CPU/"mps"/cuda in recent Transformers
 )
 
-df = pd.read_csv("vt_merged_validation.csv")   # must have "review_text" column
-df = df.head(10)
+df = pd.read_csv("rant.csv")   # must have "review_text" column
+# df = df.head(10).copy()  # Take first 10 rows and create a copy
 
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 POLICIES = ["ads", "irrelevant", "no_visit_rant"]
 
-SYSTEM_PROMPT = (
-    "You are a moderation system for business reviews.\n"
-    "Classify the given review into one or more violation categories:\n"
-    "- ads (advertisement or promotional content)\n"
-    "- irrelevant (talks about unrelated topics)\n"
-    "- no_visit_rant (complaints/rants without actual visit)\n"
-    
-    "Examples of ads violations:\n"
-    f"{chr(10).join(['• ' + review[:100] + '...' for review in spam_reviews[:3]])}\n\n"
-    
-    "Examples of irrelevant violations:\n"
-    f"{chr(10).join(['• ' + review[:100] + '...' for review in irrelevant_reviews[:3]])}\n\n"
-    
-    "Examples of no_visit_rant violations:\n"
-    f"{chr(10).join(['• ' + review[:100] + '...' for review in non_visitor_reviews[:3]])}\n\n"
-    
-    "Respond with ONLY a JSON object in this exact format:\n"
-    '{"violation": ["category1", "category2"], "rationale": "one sentence explanation of why you chose these categories", "is_text_irrelevant": true/false, "sensibility": true/false}\n'
-    'If no violations, use: {"violation": [], "rationale": "one sentence explanation of why this is a valid review", "is_text_irrelevant": true/false, "sensibility": true/false}\n'
-    'Keep rationale to one clear sentence. For is_text_irrelevant, evaluate if the text is irrelevant or unrelated to the business/location info:\n'
-    '- true: text is irrelevant or unrelated to the business/location\n'
-    '- false: text is relevant and related to the business/location\n\n'
-    'For sensibility: Given the rating out of 5, does the user\'s attitude through the text actually align with their rating? If they sound positive and rating is abpve 2.5 - true as aligned, otherwise, false as not aligned.'
-)
+
 
 IMAGE_ANALYSIS_PROMPT = (
     "You are analyzing images from business reviews.\n"
     "For each image, determine:\n"
     "1. Is this image an advertisement? (ads, promotional content, marketing materials)\n"
     "2. Is this image relevant to the business/location? (directly related to the business/location, its services/function, or the customer/visitor experience)\n\n"
-    "Respond with ONLY a JSON object in this exact format:\n"
-    '{"is_ad": true/false, "is_relevant": true/false, "rationale": "one sentence explanation"}\n'
-    'Keep rationale to one clear sentence explaining your classification. For relevance, check how well the image relates to the actual business/location info provided(if none is provided, say true).'
+    "Respond with ONLY a JSON object: {\"is_ad\": true/false, \"is_relevant\": true/false}"
+)
+
+ADS_PROMPT = (
+    "You are a moderation system for business reviews.\n"
+    "Determine if the given review contains explicit advertisement content.\n"
+    "Clear signs: phone number, address, promoting another business\n"
+    "Respond with ONLY a JSON object: {\"is_ad\": true/false}"
+)
+
+IRRELEVANT_PROMPT = (
+    "You are a moderation system for business reviews.\n"
+    "Determine if the given review text is irrelevant to the business.\n"
+    "Respond with ONLY a JSON object: {\"is_irrelevant\": true/false}"
+)
+
+NO_VISIT_RANT_PROMPT = (
+    "You are a moderation system for business reviews.\n"
+    "Determine if the given review is from someone who never visited the place.\n"
+    "Keywords: never been, heard from, passed by.\n"
+    "Respond with ONLY a JSON object: {\"is_no_visit_rant\": true/false}"
+)
+
+SENSIBILITY_PROMPT = (
+    "You are a moderation system for business reviews.\n"
+    "Determine if the given review sentiment aligns with the provided rating.\n"
+    "The rating is from 1 to 5, where 1 is the worst and 5 is the best.\n"
+    "Respond with ONLY a JSON object: {\"is_sensible\": true/false}"
 )
 
 def download_image(url):
@@ -85,23 +87,7 @@ def download_image(url):
         print(f"Error downloading image {url}: {e}")
         return None
 
-def build_chat_prompt(review_text: str, business_info: str) -> str:
-    messages = [
-        {
-            "role": "system",
-            "content": [{"type": "text", "text": SYSTEM_PROMPT}]
-        },
-        {
-            "role": "user",
-            "content": [{"type": "text", "text": f"Location Information:\n{business_info}\n\nReview:\n{review_text}"}]
-        }
-    ]
-    # Convert to a single generation string using Gemma's chat template
-    return tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True  # adds assistant preamble so model continues correctly
-    )
+
 
 def build_image_analysis_prompt(review_text: str, business_info: str, image) -> str:
     messages = [
@@ -197,10 +183,8 @@ def generate_description_from_image(image_url):
         "Based on what you see in the image, provide a brief, factual description of this business or location.\n"
         "Focus on:\n"
         "- What type of business this appears to be\n"
-        "- What services or products they likely offer\n"
-        "- The overall atmosphere or setting\n"
-        "- Any distinctive features visible\n\n"
-        "Keep your description to 1-2 sentences maximum. Be factual and avoid speculation.\n"
+        "- What services or products they likely offer, why would one be here for?\n"
+        "Keep your description to 1 sentence maximum. Be factual and avoid speculation.\n"
         "Respond with ONLY the description text, no additional formatting or explanations."
     )
     
@@ -253,14 +237,14 @@ def llm_evaluate_helpfulness(review_text: str, business_info: str) -> str:
         "Consider: Does this review add value compared to what a basic Google introduction would contain?\n\n"
         "A helpful review should contain:\n"
         "- Visiting experience details\n"
-        "- Specific descriptions of services/products\n"
+        "- Specific descriptions of services/products, such as quality of food/items\n"
         "- Extra information not found in basic business listings\n"
         "- Personal insights that help with decision-making\n\n"
         "Rate the helpfulness:\n"
         "- not_helpful: review mentions the business but provides no useful information beyond basic facts, reading this review is a waste of time\n"
         "- helpful: provides some helpful information about the business that would help with visit decisions\n"
-        "- very_helpful: gives detailed, specific information about the business that significantly helps with visit decisions\n\n"
-        "Respond with ONLY a JSON object: {\"helpfulness\": \"rating\", \"rationale\": \"explanation\"}"
+        "- very_helpful: gives detailed, specific information about the food/item/service quality or experience that significantly helps with visit decisions\n\n"
+        "Respond with ONLY a JSON object: {\"helpfulness\": \"rating\"}"
     )
     
     messages = [
@@ -294,8 +278,25 @@ def llm_evaluate_helpfulness(review_text: str, business_info: str) -> str:
         # Fallback to default value if parsing fails
         return "not_helpful"
 
-def llm_classify_text(text: str, business_info: str):
-    prompt = build_chat_prompt(text, business_info)
+def llm_classify_ads(text: str, business_info: str):
+    """Classify if review contains advertisement content"""
+    messages = [
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": ADS_PROMPT}]
+        },
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": f"Location Information:\n{business_info}\n\nReview:\n{text}"}]
+        }
+    ]
+    
+    prompt = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True
+    )
+    
     out = pipe(
         prompt,
         max_new_tokens=128,
@@ -304,27 +305,129 @@ def llm_classify_text(text: str, business_info: str):
     raw = out[0]["generated_text"].strip()
     parsed = _extract_first_json(raw)
 
-    if isinstance(parsed, dict) and isinstance(parsed.get("violation"), list):
-        flags = _bool_map_from_list(parsed["violation"])
-        rationale = parsed.get("rationale", "No rationale provided")
-        is_text_irrelevant = parsed.get("is_text_irrelevant", False)
-        sensibility = parsed.get("sensibility", False)
+    if isinstance(parsed, dict) and isinstance(parsed.get("is_ad"), bool):
         return {
-            "violations": flags,
-            "confidence": 1.0,
-            "rationale": rationale,
-            "is_text_irrelevant": is_text_irrelevant,
-            "sensibility": sensibility
+            "is_ad": parsed["is_ad"],
+            "confidence": 1.0
         }
     else:
-        # Fallback: treat as no_violation (nothing triggered)
-        flags = _bool_map_from_list([])
         return {
-            "violations": flags,
-            "confidence": 0.0,
-            "rationale": f"Unparseable model output: {raw[:120]}...",
-            "is_text_irrelevant": False,
-            "sensibility": False
+            "is_ad": False,
+            "confidence": 0.0
+        }
+
+def llm_classify_irrelevant(text: str, business_info: str):
+    """Classify if review text is irrelevant to the business"""
+    messages = [
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": IRRELEVANT_PROMPT}]
+        },
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": f"Location Information:\n{business_info}\n\nReview:\n{text}"}]
+        }
+    ]
+    
+    prompt = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True
+    )
+    
+    out = pipe(
+        prompt,
+        max_new_tokens=128,
+        return_full_text=False
+    )
+    raw = out[0]["generated_text"].strip()
+    parsed = _extract_first_json(raw)
+
+    if isinstance(parsed, dict) and isinstance(parsed.get("is_irrelevant"), bool):
+        return {
+            "is_irrelevant": parsed["is_irrelevant"],
+            "confidence": 1.0
+        }
+    else:
+        return {
+            "is_irrelevant": False,
+            "confidence": 0.0
+        }
+
+def llm_classify_no_visit_rant(text: str, business_info: str):
+    """Classify if review is from someone who never visited"""
+    messages = [
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": NO_VISIT_RANT_PROMPT}]
+        },
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": f"Location Information:\n{business_info}\n\nReview:\n{text}"}]
+        }
+    ]
+    
+    prompt = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True
+    )
+    
+    out = pipe(
+        prompt,
+        max_new_tokens=128,
+        return_full_text=False
+    )
+    raw = out[0]["generated_text"].strip()
+    parsed = _extract_first_json(raw)
+
+    if isinstance(parsed, dict) and isinstance(parsed.get("is_no_visit_rant"), bool):
+        return {
+            "is_no_visit_rant": parsed["is_no_visit_rant"],
+            "confidence": 1.0
+        }
+    else:
+        return {
+            "is_no_visit_rant": False,
+            "confidence": 0.0
+        }
+
+def llm_classify_sensibility(text: str, business_info: str, rating: float):
+    """Classify if review sentiment aligns with rating"""
+    messages = [
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": SENSIBILITY_PROMPT}]
+        },
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": f"Location Information:\n{business_info}\n\nReview:\n{text}\n\nRating: {rating}/5"}]
+        }
+    ]
+    
+    prompt = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True
+    )
+    
+    out = pipe(
+        prompt,
+        max_new_tokens=128,
+        return_full_text=False
+    )
+    raw = out[0]["generated_text"].strip()
+    parsed = _extract_first_json(raw)
+
+    if isinstance(parsed, dict) and isinstance(parsed.get("is_sensible"), bool):
+        return {
+            "is_sensible": parsed["is_sensible"],
+            "confidence": 1.0
+        }
+    else:
+        return {
+            "is_sensible": True,
+            "confidence": 0.0
         }
 
 def llm_analyze_image(review_text: str, business_info: str, image_url: str):
@@ -332,16 +435,14 @@ def llm_analyze_image(review_text: str, business_info: str, image_url: str):
     if not image_url or pd.isna(image_url):
         return {
             "is_ad": False,
-            "is_relevant": False,
-            "rationale": "No image provided"
+            "is_relevant": False
         }
     
     image = download_image(image_url)
     if image is None:
         return {
             "is_ad": False,
-            "is_relevant": False,
-            "rationale": "Failed to download image"
+            "is_relevant": False
         }
     
     prompt = build_image_analysis_prompt(review_text, business_info, image)
@@ -356,14 +457,12 @@ def llm_analyze_image(review_text: str, business_info: str, image_url: str):
     if isinstance(parsed, dict):
         return {
             "is_ad": parsed.get("is_ad", False),
-            "is_relevant": parsed.get("is_relevant", False),
-            "rationale": parsed.get("rationale", "No rationale provided")
+            "is_relevant": parsed.get("is_relevant", False)
         }
     else:
         return {
             "is_ad": False,
-            "is_relevant": False,
-            "rationale": f"Unparseable model output: {raw[:120]}..."
+            "is_relevant": False
         }
 
 def process_images_for_review(review_text: str, business_info: str, pics_collapsed):
@@ -385,7 +484,7 @@ def process_images_for_review(review_text: str, business_info: str, pics_collaps
         
         image_results = []
         any_ad = False
-        any_irrelevant = False
+        any_relevant = False
         
         # Process only the first 3 images to limit processing time
         for i, url in enumerate(urls[:3]):
@@ -395,12 +494,12 @@ def process_images_for_review(review_text: str, business_info: str, pics_collaps
                 
                 if result["is_ad"]:
                     any_ad = True
-                if not result["is_relevant"]:
-                    any_irrelevant = True
+                if result["is_relevant"]:
+                    any_relevant = True
         
         return {
             "is_image_ad": any_ad,
-            "is_image_irrelevant": any_irrelevant,
+            "is_image_irrelevant": len(image_results) > 0 and not any_relevant,
             "image_analysis": image_results
         }
     
@@ -416,7 +515,10 @@ def process_images_for_review(review_text: str, business_info: str, pics_collaps
 # Full Pipeline
 # ======================
 pipeline_start_time = time.time()
-outputs = []
+ads_outputs = []
+irrelevant_outputs = []
+no_visit_rant_outputs = []
+sensibility_outputs = []
 image_outputs = []
 
 # Cache for generated descriptions to avoid regenerating the same image descriptions
@@ -425,11 +527,19 @@ description_cache = {}
 for _, row in df.iterrows():
     review = row.get("text", "")
     pics = row.get("pics_collapsed", "")
+    rating = row.get("rating", 3.0)  # Default to 3.0 if no rating
     business_info = create_business_info(row)
     
-    # Process text classification
-    text_result = llm_classify_text(review, business_info)
-    outputs.append(text_result)
+    # Process each classification separately
+    ads_result = llm_classify_ads(review, business_info)
+    irrelevant_result = llm_classify_irrelevant(review, business_info)
+    no_visit_rant_result = llm_classify_no_visit_rant(review, business_info)
+    sensibility_result = llm_classify_sensibility(review, business_info, rating)
+    
+    ads_outputs.append(ads_result)
+    irrelevant_outputs.append(irrelevant_result)
+    no_visit_rant_outputs.append(no_visit_rant_result)
+    sensibility_outputs.append(sensibility_result)
     
     # Process image analysis
     image_result = process_images_for_review(review, business_info, pics)
@@ -439,18 +549,18 @@ pipeline_end_time = time.time()
 total_pipeline_time = pipeline_end_time - pipeline_start_time
 
 # Create boolean columns for violations
-df["is_text_ad"] = [o["violations"]["ads"] for o in outputs]
-df["is_text_rant"] = [o["violations"]["no_visit_rant"] for o in outputs]
+df["is_text_ad"] = [o["is_ad"] for o in ads_outputs]
+df["is_text_rant"] = [o["is_no_visit_rant"] for o in no_visit_rant_outputs]
 
 # Create boolean columns for image analysis
 df["is_image_ad"] = [o["is_image_ad"] for o in image_outputs]
 df["is_image_irrelevant"] = [o["is_image_irrelevant"] for o in image_outputs]
 
 # Create text irrelevance column
-df["is_text_irrelevant"] = [o["is_text_irrelevant"] for o in outputs]
+df["is_text_irrelevant"] = [o["is_irrelevant"] for o in irrelevant_outputs]
 
 # Create sensibility column
-df["sensibility"] = [o["sensibility"] for o in outputs]
+df["sensibility"] = [o["is_sensible"] for o in sensibility_outputs]
 
 # Create helpfulness column based on LLM evaluation of added value
 df["helpfulness"] = [llm_evaluate_helpfulness(row.get("text", ""), create_business_info(row)) for _, row in df.iterrows()]
@@ -458,17 +568,12 @@ df["helpfulness"] = [llm_evaluate_helpfulness(row.get("text", ""), create_busine
 # Print timing statistics
 print("=== TIMING STATISTICS ===")
 print(f"Total pipeline time: {total_pipeline_time:.2f} seconds")
-print(f"Number of reviews processed: {len(outputs)}")
-print(f"Average time per review: {total_pipeline_time/len(outputs):.2f} seconds")
+print(f"Number of reviews processed: {len(ads_outputs)}")
+print(f"Average time per review: {total_pipeline_time/len(ads_outputs):.2f} seconds")
 
-# Print rationales to screen
-print("\n=== LLM Rationales ===")
-for i, (text_output, image_output) in enumerate(zip(outputs, image_outputs)):
-    print(f"Review {i+1} - Text: {text_output['rationale']}")
-    for j, img_result in enumerate(image_output['image_analysis']):
-        print(f"  Image {j+1}: {img_result['rationale']}")
 
-df.to_csv("reviews_with_policy_flags.csv", index=False)
+
+df.to_csv("pipeline_output.csv", index=False)
 
 print("\n=== Final Output Preview ===")
 print(df[["text", "is_text_ad", "is_text_rant", "is_text_irrelevant", "sensibility", "is_image_ad", "is_image_irrelevant", "helpfulness"]].head(10))

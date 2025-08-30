@@ -1,11 +1,3 @@
-spam_keywords = [
-    "visit", "discounts", "promo", "deal", "coupon", "free", "limited time",
-    "offer", "special", "sale", "buy now", "click here", "sign up", "subscribe",
-    "follow us", "best service", "affordable prices", "quality products",
-    "leading provider", "check out", ".com", ".net", "www.", "link in bio",
-    "call now", "contact us", "exclusive", "guaranteed", "low prices", "new stock"
-]
-
 spam_reviews = [
     "Best sushi in town! We have a buy-one-get-one-free deal this weekend only. Visit our website for details: www.sushihub.com.",
     "The coffee here is okay, but if you want to experience real coffee, come to our new cafe downtown! We have a special introductory offer for new customers.",
@@ -29,8 +21,6 @@ spam_reviews = [
     "I had a decent haircut. For a truly amazing look, check out our salon. We have a special offer for new clients!"
 ]
 
-irrelevant_keywords = []
-
 irrelevant_reviews = [
     "The coffee here is okay, but I can't believe how expensive my new laptop was. I wish I had waited for the Black Friday sale. Anyway, the chairs here are a bit wobbly.",
     "I came here with my friend, and we had a great time catching up. She was telling me all about her new puppy, which is so cute! The food was fine, I guess.",
@@ -52,17 +42,6 @@ irrelevant_reviews = [
     "The gym is a good place to work out. I'm trying to decide what to watch on Netflix later.",
     "The atmosphere was cozy. My cat has been acting weird lately.",
     "I had a great time here. I'm going on vacation next week, I'm so excited!"
-]
-
-non_visitor_keywords = [
-    "never been here", "I haven't visited", "I've heard", "a friend told me",
-    "read online that", "I saw a report", "I wouldn't go", "if I were to go",
-    "seems like a bad place", "looks awful from the outside", "I can tell",
-    "based on what I saw", "after seeing pictures", "heard from a friend",
-    "I saw a news story", "my cousin told me", "from what I hear",
-    "I'm not going to visit", "I've decided not to go",
-    "from the looks of it", "I read about", "I heard a rumor",
-    "I just drove by"
 ]
 
 non_visitor_reviews = [
