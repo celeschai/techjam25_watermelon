@@ -55,5 +55,6 @@ profile_default/
 .ipython/
 
 *.csv
-test_dashboard.csv
-imagecategories.csv
+# But allow these specific CSVs
+!test_dashboard.csv
+!imagecategories.csv
