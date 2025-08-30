@@ -35,7 +35,7 @@ The system processes Google Reviews data from Vermont, USA, and provides both a 
 🎥 **Watch the Dashboard in Action**
 
 See ReviewGuard's interactive dashboard processing reviews in real-time:
-- [Dashboard Demo Video](link-to-your-video-here) *(Coming Soon)*
+- [Dashboard Demo Video](https://youtu.be/DQMUqL-3MAA)
 
 ## Data Collection and Preprocessing
 
@@ -199,6 +199,30 @@ python test_file_prep.py input.csv 1000 500 --seed 42
 # --seed: Random seed for reproducibility
 ```
 
+## Performance Evaluation
+
+### Model Assessment
+The `Performance Evaluation Folder/` contains comprehensive evaluation tools and a dataset:
+
+- **Performance_Evaluation.ipynb**: Jupyter notebook with evaluation metrics, confusion matrices, and performance analysis
+- **sample_test.csv**: Test dataset used for model evaluation
+- **sample_gt.csv**: Ground truth labels for accuracy assessment
+- **pipeline_output.csv**: Model predictions for comparison with ground truth
+
+### Evaluation Workflow
+1. **Copy Out**: Extract `sample_test.csv` from the Performance Evaluation folder
+2. **Run Pipeline**: Process with `gemma_pipeline.py` to generate new predictions
+3. **Verify Results**: Move new `pipeline_output.csv` back to the subfolder `Performance Evaulation Folder` to compare with ground truth in `sample_gt.csv`
+4. **Analyze Performance**: Use `Performance_Evaluation.ipynb` to assess model accuracy
+
+*Note: The `pipeline_output.csv` in the Performance Evaluation folder serves as a reference. For new evaluations, copy out the test data, run the pipeline, and verify results.*
+
+### Key Metrics
+- **Policy Violation Detection**: Precision, recall, and F1-score for each violation type
+- **Multimodal Performance**: Text vs. image analysis accuracy
+- **Processing Speed**: Time per review and overall pipeline efficiency
+- **Error Analysis**: Common failure modes and edge cases
+
 ## How to Reproduce Results
 
 ### 1. Data Pipeline Reproduction
@@ -254,8 +278,8 @@ streamlit run dashboard.py
 ## File Structure
 
 ```
-├── README.md                           # This file
-├── requirements.txt                    # Python dependencies
+├── README.md                          # This file
+├── requirements.txt                   # Python dependencies
 ├── data_processing.ipynb              # Data collection and preprocessing
 ├── gemma_pipeline.py                  # Main ML pipeline
 ├── gemma_pipeline_dashboard.py        # Dashboard-specific pipeline
@@ -263,8 +287,13 @@ streamlit run dashboard.py
 ├── test_file_prep.py                  # Dataset splitting utilities
 ├── dashboard.py                       # Streamlit dashboard interface
 ├── .env                               # Environment variables (create this)
-├── processed_dataset.csv              # Processed dataset
-└── imagecategories.csv                # Scraped business data
+├── vt_metadata.csv                    # Processed dataset
+├── imagecategories.csv                # Scraped business data
+└── Performance Evaluation Folder/     # Model evaluation and testing
+    ├── Performance_Evaluation.ipynb   # Evaluation metrics and analysis
+    ├── sample_test.csv                # Test dataset for evaluation
+    ├── sample_gt.csv                  # Ground truth labels for testing
+    └── pipeline_output.csv            # Pipeline results for evaluation
 ```
 
 ## Input/Output Schemas
