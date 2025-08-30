@@ -239,13 +239,12 @@ The `Performance Evaluation Folder/` contains comprehensive evaluation tools and
 ### 2. Model Training Reproduction
 ```bash
 # 1. Set HF_TOKEN in .env
-# 2. Run pipeline on validation set
+# 2. Set input and output file path 
+# 3. Run pipeline on validation set
 python gemma_pipeline.py
 
 # Expected outputs:
 # - Processing time: ~X seconds per review
-# - Policy violation counts
-# - Quality metric distributions
 ```
 
 ### 3. Dashboard Reproduction
