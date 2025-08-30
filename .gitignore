@@ -59,3 +59,5 @@ profile_default/
 !test_dashboard.csv
 !imagecategories.csv
 !sample_gt.csv
+!sample_test.csv
+!pipeline_output.csv
