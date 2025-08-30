@@ -1,4 +1,4 @@
-import csv
+import pandas as pd
 import json
 from openai import OpenAI
 import os
@@ -13,9 +13,9 @@ def format_row_for_openai(row):
     formatted_data = {
         "time": row.get('time', ''),
         "text": row.get('text', ''),
-        "pics": row.get('pics', ''),
-        "resp": row.get('resp', ''),
-        "name_of_business": row.get('name_of_business', ''),
+        "pics": row.get('pics_collapsed', ''),
+        "resp": row.get('resp_collapsed', ''),
+        "name_of_business": row.get('name', ''),
         "description": row.get('description', ''),
         "category": row.get('category', ''),
         "url": row.get('url', '')
@@ -116,51 +116,58 @@ def create_fallback_response():
 
 def main():
     """Main function to process the CSV file."""
-    input_file = 'sample_input.csv'
-    output_file = 'output.csv'
+    input_file = 'vt_merged.csv'
+    output_file = 'openAI_output.csv'
     
-    results = []
+    # Set row limit - change this number to process fewer rows
+    max_rows = 5  # Process only first 5 rows
     
     try:
-        with open(input_file, 'r', encoding='utf-8') as csvfile:
-            reader = csv.DictReader(csvfile)
-            
-            for i, row in enumerate(reader):
-                print(f"\nProcessing row {i+1}...")
-                
-                # Format the row data
-                formatted_data = format_row_for_openai(row)
-                
-                # Analyze with OpenAI
-                analysis = analyze_with_openai(formatted_data)
-                
-                # Print rationale to screen
-                print(f"Rationale: {analysis.get('rationale', 'No rationale provided')}")
-                
-                # Prepare output row
-                output_row = {
-                    'is_Text_Ad': analysis['text_violations']['is_Text_Ad'],
-                    'is_Text_Rant': analysis['text_violations']['is_Text_Rant'],
-                    'is_Text_Irrelevant': analysis['text_violations']['is_Text_Irrelevant'],
-                    'is_Image_Ad': analysis['image_violations']['is_Image_Ad'],
-                    'is_Image_Irrelevant': analysis['image_violations']['is_Image_Irrelevant'],
-                    'relevancy_final': analysis['relevance_assessment']
-                }
-                
-                results.append(output_row)
-                
-                # Add a small delay to avoid rate limiting
-                import time
-                time.sleep(0.5)
+        # Read CSV with pandas
+        df = pd.read_csv(input_file)
         
-        # Write results to output CSV
-        if results:
-            fieldnames = ['is_Text_Ad', 'is_Text_Rant', 'is_Text_Irrelevant', 'is_Image_Ad', 'is_Image_Irrelevant', 'relevancy_final']
+        # Limit rows
+        df_limited = df.head(max_rows)
+        print(f"Processing {len(df_limited)} rows out of {len(df)} total rows")
+        
+        results = []
+        
+        for i, (index, row) in enumerate(df_limited.iterrows()):
+            print(f"\nProcessing row {i+1}/{len(df_limited)}...")
             
-            with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(results)
+            # Convert pandas row to dict for processing
+            row_dict = row.to_dict()
+            
+            # Format the row data
+            formatted_data = format_row_for_openai(row_dict)
+            
+            # Analyze with OpenAI
+            analysis = analyze_with_openai(formatted_data)
+            
+            # Print rationale to screen
+            print(f"Rationale: {analysis.get('rationale', 'No rationale provided')}")
+            
+            # Prepare output row - copy all original data and update with AI analysis
+            output_row = row_dict.copy()  # Copy all original columns
+            output_row.update({
+                'is_text_ad': analysis['text_violations']['is_Text_Ad'],
+                'is_text_rant': analysis['text_violations']['is_Text_Rant'],
+                'is_text_irrelevant': analysis['text_violations']['is_Text_Irrelevant'],
+                'is_image_ad': analysis['image_violations']['is_Image_Ad'],
+                'is_image_irrelevant': analysis['image_violations']['is_Image_Irrelevant'],
+                'relevancy_final': analysis['relevance_assessment']
+            })
+            
+            results.append(output_row)
+            
+            # Add a small delay to avoid rate limiting
+            import time
+            time.sleep(0.5)
+        
+        # Write results to output CSV using pandas
+        if results:
+            results_df = pd.DataFrame(results)
+            results_df.to_csv(output_file, index=False)
             
             print(f"\nAnalysis complete! Results saved to {output_file}")
             print(f"Processed {len(results)} rows successfully.")
