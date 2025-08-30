@@ -142,8 +142,8 @@ The pipeline automatically downloads the Gemma-3-4B-IT model on first run (~8GB)
 
 ### 4. Data Preparation
 ```bash
-# Run the data processing notebook
-jupyter notebook data_processing.ipynb
+# Open and run all cells in the data processing notebook
+# Open data_processing.ipynb in Jupyter and run all cells sequentially
 
 # Or use the test file preparation script
 python test_file_prep.py vt_merged.csv 1000 500 --output-dir ./splits
@@ -154,6 +154,7 @@ python test_file_prep.py vt_merged.csv 1000 500 --output-dir ./splits
 ### 1. Standalone Pipeline
 ```bash
 # Process validation dataset
+# Note: Update the input file path in gemma_pipeline.py (line ~80)
 python gemma_pipeline.py
 
 # Output: pipeline_output.csv with all analysis results
@@ -162,6 +163,7 @@ python gemma_pipeline.py
 ### 2. Interactive Dashboard
 ```bash
 # Launch Streamlit dashboard
+# Note: The dashboard automatically reads from dashboard.csv (uploaded via UI)
 streamlit run dashboard.py
 
 # Upload CSV via web interface
@@ -171,6 +173,7 @@ streamlit run dashboard.py
 ### 3. Test Data Preparation
 ```bash
 # Split dataset into test/validation sets
+# Note: Update the input file path in test_file_prep.py or pass as argument
 python test_file_prep.py input.csv 1000 500 --seed 42
 
 # Options:

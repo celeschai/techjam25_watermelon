@@ -73,7 +73,7 @@ pipe = pipeline(
 
 # Load the validation dataset containing business reviews
 # Must have "review_text" column for processing
-df = pd.read_csv("vt_merged_validation.csv")
+df = pd.read_csv("sample_test.csv")
 
 # Initialize tokenizer for converting chat templates to prompts
 # This is needed for the chat-based prompting approach
