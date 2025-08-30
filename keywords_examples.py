@@ -60,10 +60,9 @@ non_visitor_keywords = [
     "seems like a bad place", "looks awful from the outside", "I can tell",
     "based on what I saw", "after seeing pictures", "heard from a friend",
     "I saw a news story", "my cousin told me", "from what I hear",
-    "I'm not going to visit", "I've decided not to go", "I'm just giving it one star",
-    "I would never recommend", "I can't imagine", "the reviews say",
+    "I'm not going to visit", "I've decided not to go",
     "from the looks of it", "I read about", "I heard a rumor",
-    "I just drove by", "I would avoid this place", "don't go here", "my uncle told me"
+    "I just drove by"
 ]
 
 non_visitor_reviews = [

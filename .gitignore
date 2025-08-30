@@ -12,7 +12,9 @@ __pycache__/
 venv/
 env/
 ENV/
-.env
+# Ignore all env files anywhere
+*.env
+.env*
 
 # Distribution / packaging
 build/
