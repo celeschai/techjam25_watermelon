@@ -9,8 +9,7 @@ import streamlit as st
 # Config / Schemas
 # ==============================
 INPUT_COLUMNS = [
-    "user_id","time","rating","text","pics_collapsed","resp_collapsed",
-    "name","category"
+    "user_id","time","rating","text","pics_collapsed","name","category"
 ]
 OUTPUT_COLUMNS = [
     "review_id","user_id","time","rating","text","pics_collapsed","resp_collapsed",
