@@ -1,8 +1,5 @@
 import json
 import os
-import re
-import time
-import requests
 from PIL import Image
 from io import BytesIO
 
@@ -20,7 +17,7 @@ hf_token = os.getenv("HF_TOKEN")
 login(token=hf_token)
 
 device = "mps" if torch.backends.mps.is_available() else "cpu"
-dtype  = torch.bfloat16  # bf16 on MPS can be flaky
+dtype  = torch.bfloat16  
 
 model_id = "google/gemma-3-4b-it"
 
@@ -28,12 +25,11 @@ processor = AutoProcessor.from_pretrained(model_id, use_fast=True)
 pipe = pipeline(
     task="image-text-to-text",
     model=model_id,
-    processor=processor,          # forces fast processor, no warning
+    processor=processor,          
     torch_dtype=dtype,
-    device=device                 # works for CPU/"mps"/cuda in recent Transformers
-)
+    device=device              
 
-df = pd.read_csv("vt_merged_validation.csv")   # must have "review_text" column
+df = pd.read_csv("sample_gt.csv")   
 
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 POLICIES = ["ads", "irrelevant", "no_visit_rant"]
@@ -140,16 +136,6 @@ def _extract_first_json(s: str):
         return json.loads(m.group(0))
     except json.JSONDecodeError:
         return {}
-
-def _bool_map_from_list(labels):
-    """Turn a list like ['ads', 'irrelevant'] into a full bool map with exclusivity rule for no_violation."""
-    flags = {k: False for k in POLICIES}
-    for lab in labels:
-        if lab in flags and lab != "no_violation":
-            flags[lab] = True
-    # no_violation is True only if none of the violation flags are True
-    flags["no_violation"] = not (flags["ads"] or flags["irrelevant"] or flags["no_visit_rant"])
-    return flags
 
 def create_business_info(row):
     """Create business information string from row data"""
