@@ -58,13 +58,11 @@ SYSTEM_PROMPT = (
     f"{chr(10).join(['• ' + review[:100] + '...' for review in non_visitor_reviews[:3]])}\n\n"
     
     "Respond with ONLY a JSON object in this exact format:\n"
-    '{"violation": ["category1", "category2"], "rationale": "one sentence explanation of why you chose these categories", "text_relevance": "irrelevant|not_helpful|helpful|very_helpful", "sensibility": true/false}\n'
-    'If no violations, use: {"violation": [], "rationale": "one sentence explanation of why this is a valid review", "text_relevance": "irrelevant|not_helpful|helpful|very_helpful", "sensibility": true/false}\n'
-    'Keep rationale to one clear sentence. For text_relevance, evaluate how relevant/actually related the text is to the business/location info:\n'
-    '- irrelevant: reading this review is a waste of time - completely unrelated to the business\n'
-    '- not_helpful: review mentions the business but provides no useful information beyond basic facts\n'
-    '- helpful: provides some helpful information about the business that would help with visit decisions\n'
-    '- very_helpful: gives detailed, specific information about the business that significantly helps with visit decisions\n\n'
+    '{"violation": ["category1", "category2"], "rationale": "one sentence explanation of why you chose these categories", "is_text_irrelevant": true/false, "sensibility": true/false}\n'
+    'If no violations, use: {"violation": [], "rationale": "one sentence explanation of why this is a valid review", "is_text_irrelevant": true/false, "sensibility": true/false}\n'
+    'Keep rationale to one clear sentence. For is_text_irrelevant, evaluate if the text is irrelevant or unrelated to the business/location info:\n'
+    '- true: text is irrelevant or unrelated to the business/location\n'
+    '- false: text is relevant and related to the business/location\n\n'
     'For sensibility: Given the rating out of 5, does the user\'s attitude through the text actually align with their rating? true if aligned, false if not aligned.'
 )
 
@@ -149,16 +147,6 @@ def _bool_map_from_list(labels):
     flags["no_violation"] = not (flags["ads"] or flags["irrelevant"] or flags["no_visit_rant"])
     return flags
 
-def _text_relevance_to_category(relevance_str):
-    """Convert text relevance string to category"""
-    relevance_map = {
-        "irrelevant": "irrelevant",
-        "not_helpful": "not helpful", 
-        "helpful": "helpful",
-        "very_helpful": "very helpful"
-    }
-    return relevance_map.get(relevance_str, "not helpful")
-
 def create_business_info(row):
     """Create business information string from row data"""
     parts = []
@@ -177,34 +165,6 @@ def create_business_info(row):
     
     return "\n".join(parts)
 
-def determine_helpfulness(text_relevance: str, image_results: list) -> str:
-    """Determine overall helpfulness based on text and image analysis"""
-    # Start with text relevance
-    helpfulness = text_relevance
-    
-    # If images are ads or irrelevant, downgrade helpfulness
-    if image_results:
-        has_ads = any(result["is_ad"] for result in image_results)
-        has_irrelevant_images = any(not result["is_relevant"] for result in image_results)
-        
-        if has_ads:
-            # If images are ads, downgrade helpfulness
-            if helpfulness == "very_helpful":
-                helpfulness = "helpful"
-            elif helpfulness == "helpful":
-                helpfulness = "not_helpful"
-            elif helpfulness == "not_helpful":
-                helpfulness = "irrelevant"
-        
-        if has_irrelevant_images and helpfulness in ["very_helpful", "helpful"]:
-            # If images are irrelevant, slightly downgrade
-            if helpfulness == "very_helpful":
-                helpfulness = "helpful"
-            elif helpfulness == "helpful":
-                helpfulness = "not_helpful"
-    
-    return helpfulness
-
 def llm_evaluate_helpfulness(review_text: str, business_info: str) -> str:
     """Use LLM to evaluate overall helpfulness based on added value compared to basic Google info"""
     
@@ -217,8 +177,7 @@ def llm_evaluate_helpfulness(review_text: str, business_info: str) -> str:
         "- Extra information not found in basic business listings\n"
         "- Personal insights that help with decision-making\n\n"
         "Rate the helpfulness:\n"
-        "- irrelevant: reading this review is a waste of time - completely unrelated to the business\n"
-        "- not_helpful: review mentions the business but provides no useful information beyond basic facts\n"
+        "- not_helpful: review mentions the business but provides no useful information beyond basic facts, reading this review is a waste of time\n"
         "- helpful: provides some helpful information about the business that would help with visit decisions\n"
         "- very_helpful: gives detailed, specific information about the business that significantly helps with visit decisions\n\n"
         "Respond with ONLY a JSON object: {\"helpfulness\": \"rating\", \"rationale\": \"explanation\"}"
@@ -268,13 +227,13 @@ def llm_classify_text(text: str, business_info: str):
     if isinstance(parsed, dict) and isinstance(parsed.get("violation"), list):
         flags = _bool_map_from_list(parsed["violation"])
         rationale = parsed.get("rationale", "No rationale provided")
-        text_relevance = parsed.get("text_relevance", "not_helpful")
+        is_text_irrelevant = parsed.get("is_text_irrelevant", False)
         sensibility = parsed.get("sensibility", False)
         return {
             "violations": flags,
             "confidence": 1.0,
             "rationale": rationale,
-            "text_relevance": text_relevance,
+            "is_text_irrelevant": is_text_irrelevant,
             "sensibility": sensibility
         }
     else:
@@ -284,7 +243,7 @@ def llm_classify_text(text: str, business_info: str):
             "violations": flags,
             "confidence": 0.0,
             "rationale": f"Unparseable model output: {raw[:120]}...",
-            "text_relevance": "not_helpful",
+            "is_text_irrelevant": False,
             "sensibility": False
         }
 
@@ -403,8 +362,8 @@ df["is_text_rant"] = [o["violations"]["no_visit_rant"] for o in outputs]
 df["is_image_ad"] = [o["is_image_ad"] for o in image_outputs]
 df["is_image_irrelevant"] = [o["is_image_irrelevant"] for o in image_outputs]
 
-# Create text relevance column
-df["is_text_relevant"] = [o["text_relevance"] for o in outputs]
+# Create text irrelevance column
+df["is_text_irrelevant"] = [o["is_text_irrelevant"] for o in outputs]
 
 # Create sensibility column
 df["sensibility"] = [o["sensibility"] for o in outputs]
@@ -422,22 +381,21 @@ print(f"Average time per review: {total_pipeline_time/len(outputs):.2f} seconds"
 print("\n=== LLM Rationales ===")
 for i, (text_output, image_output) in enumerate(zip(outputs, image_outputs)):
     print(f"Review {i+1} - Text: {text_output['rationale']}")
-    print(f"Review {i+1} - Images: {len(image_output['image_analysis'])} images analyzed")
     for j, img_result in enumerate(image_output['image_analysis']):
         print(f"  Image {j+1}: {img_result['rationale']}")
 
 df.to_csv("reviews_with_policy_flags.csv", index=False)
+
 print("\n=== Final Output Preview ===")
-print(df[["text", "is_text_ad", "is_text_rant", "is_text_relevant", "sensibility", "is_image_ad", "is_image_irrelevant", "helpfulness"]].head(10))
+print(df[["text", "is_text_ad", "is_text_rant", "is_text_irrelevant", "sensibility", "is_image_ad", "is_image_irrelevant", "helpfulness"]].head(10))
 print("\n=== Column Descriptions ===")
 print("- is_text_ad: Boolean - review contains advertisement content")
 print("- is_text_rant: Boolean - review is a rant without actual visit")
-print("- is_text_relevant: Text relevance rating - how related the text is to the business/location info")
+print("- is_text_irrelevant: Boolean - is the text irrelevant or unrelated to the business/location info?")
 print("- sensibility: Boolean - does the user's attitude in the text align with their rating?")
 print("- is_image_ad: Boolean - images contain advertisement content")
 print("- is_image_irrelevant: Boolean - images are irrelevant to the business/location info")
 print("- helpfulness: Overall helpfulness rating - does the review add value compared to basic Google info?")
-print("  • irrelevant: reading this review is a waste of time - completely unrelated to the business")
-print("  • not_helpful: review mentions the business but provides no useful information beyond basic facts")
+print("  • not_helpful: review mentions the business but provides no useful information beyond basic facts, reading this review is a waste of time")
 print("  • helpful: provides some helpful information about the business that would help with visit decisions")
 print("  • very_helpful: gives detailed, specific information about the business that significantly helps with visit decisions")
