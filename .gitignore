@@ -50,3 +50,5 @@ coverage.xml
 jupyter_notebook_config.py
 profile_default/
 .ipython/
+
+*.csv
