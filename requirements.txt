@@ -1,0 +1,12 @@
+torch
+torchvision
+torchaudio
+transformers
+huggingface-hub
+pillow
+requests
+pandas
+python-dotenv
+streamlit
+accelerate
+safetensors

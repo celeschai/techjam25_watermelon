@@ -1,3 +1,31 @@
+# =============================================================================
+# Dashboard-Specific Version of Gemma Pipeline for Business Review Moderation
+# =============================================================================
+# This is a specialized version of gemma_pipeline.py designed specifically for
+# integration with the Streamlit dashboard interface.
+#
+# Key Differences from Main Pipeline:
+# - Reads from "dashboard.csv" instead of "vt_merged_validation.csv"
+# - Outputs to "dashboard_output.csv" for dashboard consumption
+# - Optimized for interactive dashboard workflows
+# - Maintains all core ML functionality of the main pipeline
+#
+# Core Functionality:
+# - Multimodal analysis of business reviews using Google Gemma-3-4B-IT
+# - Text-based policy violation detection (ads, irrelevant, no-visit rants)
+# - Image analysis for advertisement and relevance detection
+# - Review helpfulness evaluation and sentiment-rating consistency
+# - Real-time processing for dashboard applications
+#
+# Integration Points:
+# - Input: dashboard.csv (uploaded via Streamlit interface)
+# - Output: dashboard_output.csv (consumed by dashboard visualizations)
+# - Backend: Runs as subprocess from dashboard.py
+#
+# Note: This file maintains identical ML logic to gemma_pipeline.py to ensure
+# consistent results between standalone and dashboard usage modes.
+# =============================================================================
+
 import json
 import os
 import re
@@ -15,25 +43,53 @@ from transformers import AutoProcessor, AutoTokenizer, pipeline
 
 
 
+# =============================================================================
+# Environment Setup and Model Initialization
+# =============================================================================
+
+# Load environment variables from .env file for secure token management
+# This prevents hardcoding sensitive information like API tokens
 load_dotenv()  # looks for .env in current dir
 hf_token = os.getenv("HF_TOKEN")
+
+# Authenticate with Hugging Face to access the Gemma model
+# Required because Gemma is a gated model that requires acceptance of terms
 login(token=hf_token)
 
+# Device selection: Use MPS (Metal Performance Shaders) on Apple Silicon Macs for GPU acceleration
+# Fall back to CPU if MPS is not available (e.g., on Intel Macs or other systems)
 device = "mps" if torch.backends.mps.is_available() else "cpu"
+
+# Use bfloat16 precision for memory efficiency and faster inference
+# Note: bf16 on MPS can be flaky, but provides good balance of speed vs memory
 dtype  = torch.bfloat16  # bf16 on MPS can be flaky
 
+# Model selection: Google's Gemma-3-4B-IT (Instruction Tuned) model
+# - 4B parameters: Good balance between performance and resource requirements
+# - IT suffix: Instruction-tuned for better following prompts
+# - Multimodal: Can process both text and images
 model_id = "google/gemma-3-4b-it"
 
+# Initialize the processor for handling multimodal inputs (text + images)
+# use_fast=True ensures we use the faster tokenizer implementation
 processor = AutoProcessor.from_pretrained(model_id, use_fast=True)
+
+# Create the pipeline for image-text-to-text generation
+# This is the core component that will process our multimodal inputs
 pipe = pipeline(
-    task="image-text-to-text",
+    task="image-text-to-text",  # Multimodal task: image + text → text
     model=model_id,
     processor=processor,          # forces fast processor, no warning
-    torch_dtype=dtype,
+    torch_dtype=dtype,           # Use bfloat16 for memory efficiency
     device=device                 # works for CPU/"mps"/cuda in recent Transformers
 )
 
-# Read from dashboard input
+# =============================================================================
+# Data Loading and Configuration
+# =============================================================================
+
+# Read from dashboard input - this is the key difference from the main pipeline
+# The dashboard uploads CSV files which are saved as dashboard.csv
 try:
     df = pd.read_csv("dashboard.csv")
     print(f"Successfully loaded dashboard.csv with {len(df)} rows")
@@ -44,11 +100,27 @@ except Exception as e:
     print(f"Error reading dashboard.csv: {e}")
     exit(1)
 
+# Initialize tokenizer for converting chat templates to prompts
+# This is needed for the chat-based prompting approach
 tokenizer = AutoTokenizer.from_pretrained(model_id)
+
+# Define the three main policy violation categories we're detecting
+# These represent the core moderation rules for business reviews
 POLICIES = ["ads", "irrelevant", "no_visit_rant"]
 
 
 
+# =============================================================================
+# Prompt Engineering for Different Analysis Tasks
+# =============================================================================
+# Each prompt is carefully crafted to:
+# 1. Define the specific task clearly
+# 2. Provide examples of violations
+# 3. Request structured JSON output for easy parsing
+# 4. Include business context for better decision making
+
+# Prompt for analyzing images in reviews
+# Determines if images are ads or relevant to the business
 IMAGE_ANALYSIS_PROMPT = (
     "You are analyzing images from business reviews.\n"
     "For each image, determine:\n"
@@ -57,6 +129,8 @@ IMAGE_ANALYSIS_PROMPT = (
     "Respond with ONLY a JSON object: {\"is_ad\": true/false, \"is_relevant\": true/false}"
 )
 
+# Prompt for detecting advertisement content in review text
+# Focuses on explicit marketing language and external business promotion
 ADS_PROMPT = (
     "You are a moderation system for business reviews.\n"
     "Determine if the given review contains explicit advertisement content.\n\n"
@@ -70,6 +144,8 @@ ADS_PROMPT = (
     "Respond with ONLY a JSON object: {\"is_ad\": true/false}"
 )
 
+# Prompt for detecting irrelevant content
+# Distinguishes between negative sentiment (relevant) and truly unrelated content
 IRRELEVANT_PROMPT = (
     "You are a moderation system for business reviews.\n"
     "Determine if the given review text is irrelevant to the business.\n\n"
@@ -83,6 +159,8 @@ IRRELEVANT_PROMPT = (
     "Respond with ONLY a JSON object: {\"is_irrelevant\": true/false}"
 )
 
+# Prompt for detecting reviews from non-visitors
+# Important for maintaining review quality and authenticity
 NO_VISIT_RANT_PROMPT = (
     "You are a moderation system for business reviews.\n"
     "Determine if the given review is from someone who never visited the place.\n\n"
@@ -98,6 +176,8 @@ NO_VISIT_RANT_PROMPT = (
     "Respond with ONLY a JSON object: {\"is_no_visit_rant\": true/false}"
 )
 
+# Prompt for analyzing sentiment-rating consistency
+# Helps identify potentially fake or misleading reviews
 SENSIBILITY_PROMPT = (
     "You are a moderation system for business reviews.\n"
     "Determine if the given review sentiment aligns with the provided rating.\n"
@@ -105,11 +185,26 @@ SENSIBILITY_PROMPT = (
     "Respond with ONLY a JSON object: {\"is_sensible\": true/false}"
 )
 
+# =============================================================================
+# Utility Functions
+# =============================================================================
+
 def download_image(url):
-    """Download image from URL and return PIL Image object"""
+    """
+    Download image from URL and return PIL Image object
+    
+    Args:
+        url (str): URL of the image to download
+        
+    Returns:
+        PIL.Image.Image or None: Downloaded image or None if download fails
+        
+    Note: This function handles network errors gracefully and sets a reasonable timeout
+    to prevent the pipeline from hanging on slow or broken image URLs.
+    """
     try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
+        response = requests.get(url, timeout=10)  # 10 second timeout prevents hanging
+        response.raise_for_status()  # Raise exception for HTTP errors
         img = Image.open(BytesIO(response.content))
         return img
     except Exception as e:
@@ -119,6 +214,20 @@ def download_image(url):
 
 
 def build_image_analysis_prompt(review_text: str, business_info: str, image) -> str:
+    """
+    Build a multimodal prompt for image analysis using Gemma's chat template format
+    
+    Args:
+        review_text (str): The review text to provide context
+        business_info (str): Business location information for context
+        image: PIL Image object to analyze
+        
+    Returns:
+        str: Formatted prompt string ready for the pipeline
+        
+    Note: This function uses Gemma's chat template to format the prompt in a way
+    that the model expects, ensuring optimal performance and response quality.
+    """
     messages = [
         {
             "role": "system",
@@ -133,15 +242,30 @@ def build_image_analysis_prompt(review_text: str, business_info: str, image) -> 
         }
     ]
     # Convert to a single generation string using Gemma's chat template
+    # This ensures the model receives the prompt in its expected format
     return tokenizer.apply_chat_template(
         messages,
         tokenize=False,
         add_generation_prompt=True
     )
 
+# Regular expression pattern for extracting JSON responses from model output
+# Uses DOTALL flag to match across multiple lines
 _JSON_PATTERN = re.compile(r"\{.*?\}", flags=re.DOTALL)
 
 def _extract_first_json(s: str):
+    """
+    Extract the first JSON object from a string using regex
+    
+    Args:
+        s (str): String that may contain JSON
+        
+    Returns:
+        dict: Parsed JSON object or empty dict if parsing fails
+        
+    Note: This function is robust to cases where the model outputs additional text
+    before or after the JSON response, which is common with LLMs.
+    """
     m = _JSON_PATTERN.search(s)
     if not m:
         return {}
@@ -151,7 +275,18 @@ def _extract_first_json(s: str):
         return {}
 
 def _bool_map_from_list(labels):
-    """Turn a list like ['ads', 'irrelevant'] into a full bool map with exclusivity rule for no_violation."""
+    """
+    Turn a list like ['ads', 'irrelevant'] into a full bool map with exclusivity rule for no_violation.
+    
+    Args:
+        labels (list): List of violation labels
+        
+    Returns:
+        dict: Boolean map with all policy flags and no_violation flag
+        
+    Note: The no_violation flag is True only if none of the violation flags are True,
+    implementing an exclusivity rule that ensures each review is classified exactly once.
+    """
     flags = {k: False for k in POLICIES}
     for lab in labels:
         if lab in flags and lab != "no_violation":
@@ -161,7 +296,19 @@ def _bool_map_from_list(labels):
     return flags
 
 def create_business_info(row):
-    """Create business information string from row data"""
+    """
+    Create business information string from row data for context
+    
+    Args:
+        row: Pandas row containing business metadata
+        
+    Returns:
+        str: Formatted business information string
+        
+    Note: This function provides essential context to the LLM for making informed
+    decisions about review relevance and violations. Business context helps distinguish
+    between legitimate complaints and truly irrelevant content.
+    """
     parts = []
     
     if pd.notna(row.get("name")) and str(row.get("name")).strip():
@@ -177,8 +324,31 @@ def create_business_info(row):
 
 
 
+# =============================================================================
+# LLM Analysis Functions
+# =============================================================================
+# Each function follows the same pattern:
+# 1. Build a prompt with business context and review text
+# 2. Use the chat template for proper formatting
+# 3. Call the pipeline with controlled token generation
+# 4. Parse JSON response with fallback handling
+# 5. Return structured results with confidence scores
+
 def llm_evaluate_helpfulness(review_text: str, business_info: str) -> str:
-    """Use LLM to evaluate overall helpfulness based on added value compared to basic Google info"""
+    """
+    Use LLM to evaluate overall helpfulness based on added value compared to basic Google info
+    
+    Args:
+        review_text (str): The review text to evaluate
+        business_info (str): Business context information
+        
+    Returns:
+        str: Helpfulness rating (not_helpful, helpful, or very_helpful)
+        
+    Note: This function evaluates whether a review provides value beyond basic business
+    information that users could find elsewhere. This is crucial for maintaining review
+    quality and helping users make informed decisions.
+    """
     
     HELPFULNESS_PROMPT = (
         "You are evaluating how useful a business review is to someone considering visiting this place.\n"
@@ -227,7 +397,19 @@ def llm_evaluate_helpfulness(review_text: str, business_info: str) -> str:
         return "not_helpful"
 
 def llm_classify_ads(text: str, business_info: str):
-    """Classify if review contains advertisement content"""
+    """
+    Classify if review contains advertisement content
+    
+    Args:
+        text (str): Review text to analyze
+        business_info (str): Business context information
+        
+    Returns:
+        dict: Classification result with confidence score
+        
+    Note: Advertisement detection is critical for maintaining review authenticity.
+    Reviews should reflect genuine customer experiences, not marketing campaigns.
+    """
     messages = [
         {
             "role": "system",
@@ -259,13 +441,27 @@ def llm_classify_ads(text: str, business_info: str):
             "confidence": 1.0
         }
     else:
+        # Fallback: assume no violation if parsing fails
+        # This is a conservative approach that prioritizes false negatives over false positives
         return {
             "is_ad": False,
             "confidence": 0.0
         }
 
 def llm_classify_irrelevant(text: str, business_info: str):
-    """Classify if review text is irrelevant to the business"""
+    """
+    Classify if review text is irrelevant to the business
+    
+    Args:
+        text (str): Review text to analyze
+        business_info (str): Business context information
+        
+    Returns:
+        dict: Classification result with confidence score
+        
+    Note: Distinguishing between negative sentiment and irrelevant content is crucial.
+    A negative review about service quality is relevant; a review about politics is not.
+    """
     messages = [
         {
             "role": "system",
@@ -303,7 +499,19 @@ def llm_classify_irrelevant(text: str, business_info: str):
         }
 
 def llm_classify_no_visit_rant(text: str, business_info: str):
-    """Classify if review is from someone who never visited"""
+    """
+    Classify if review is from someone who never visited
+    
+    Args:
+        text (str): Review text to analyze
+        business_info (str): Business context information
+        
+    Returns:
+        dict: Classification result with confidence score
+        
+    Note: This detection is essential for review authenticity. Reviews should be
+    based on actual experiences, not hearsay or external opinions.
+    """
     messages = [
         {
             "role": "system",
@@ -341,7 +549,20 @@ def llm_classify_no_visit_rant(text: str, business_info: str):
         }
 
 def llm_classify_sensibility(text: str, business_info: str, rating: float):
-    """Classify if review sentiment aligns with rating"""
+    """
+    Classify if review sentiment aligns with rating
+    
+    Args:
+        text (str): Review text to analyze
+        business_info (str): Business context information
+        rating (float): Numerical rating (1-5) given by the user
+        
+    Returns:
+        dict: Classification result with confidence score
+        
+    Note: This helps identify potentially fake reviews where sentiment and rating
+    are inconsistent, which could indicate review manipulation or fake accounts.
+    """
     messages = [
         {
             "role": "system",
@@ -379,7 +600,20 @@ def llm_classify_sensibility(text: str, business_info: str, rating: float):
         }
 
 def llm_analyze_image(review_text: str, business_info: str, image_url: str):
-    """Analyze a single image for ads and relevance"""
+    """
+    Analyze a single image for ads and relevance
+    
+    Args:
+        review_text (str): Review text for context
+        business_info (str): Business information for context
+        image_url (str): URL of the image to analyze
+        
+    Returns:
+        dict: Analysis results with boolean flags
+        
+    Note: Image analysis is computationally expensive, so we limit processing
+    to the first few images per review and handle download failures gracefully.
+    """
     if not image_url or pd.isna(image_url):
         return {
             "is_ad": False,
@@ -414,7 +648,20 @@ def llm_analyze_image(review_text: str, business_info: str, image_url: str):
         }
 
 def process_images_for_review(review_text: str, business_info: str, pics_collapsed):
-    """Process all images for a single review"""
+    """
+    Process all images for a single review
+    
+    Args:
+        review_text (str): Review text for context
+        business_info (str): Business information for context
+        pics_collapsed: String representation of image URLs or list of URLs
+        
+    Returns:
+        dict: Aggregated image analysis results
+        
+    Note: This function processes multiple images per review and aggregates the results.
+    We limit processing to the first 3 images to balance accuracy with performance.
+    """
     if pd.isna(pics_collapsed) or not pics_collapsed:
         return {
             "is_image_ad": False,
@@ -459,10 +706,20 @@ def process_images_for_review(review_text: str, business_info: str, pics_collaps
             "image_analysis": []
         }
 
-# ======================
-# Full Pipeline
-# ======================
+# =============================================================================
+# Main Pipeline Execution
+# =============================================================================
+# The pipeline processes each review through multiple classification stages:
+# 1. Text-based policy violation detection
+# 2. Image analysis for visual content
+# 3. Helpfulness evaluation
+# 4. Results aggregation and output generation
+
+# Record start time for performance monitoring
 pipeline_start_time = time.time()
+
+# Initialize output containers for each classification type
+# This allows us to process all reviews first, then add results to the dataframe
 ads_outputs = []
 irrelevant_outputs = []
 no_visit_rant_outputs = []
@@ -471,60 +728,79 @@ image_outputs = []
 
 
 
+# Process each review in the dataset
+# This is the core loop where all LLM analysis happens
 for _, row in df.iterrows():
+    # Extract review components
     review = row.get("text", "")
     pics = row.get("pics_collapsed", "")
     rating = row.get("rating", 3.0)  # Default to 3.0 if no rating
     business_info = create_business_info(row)
     
-    # Process each classification separately
+    # Process each classification separately for modularity and error isolation
+    # If one classification fails, others can still succeed
     ads_result = llm_classify_ads(review, business_info)
     irrelevant_result = llm_classify_irrelevant(review, business_info)
     no_visit_rant_result = llm_classify_no_visit_rant(review, business_info)
     sensibility_result = llm_classify_sensibility(review, business_info, rating)
     
+    # Store results for later processing
     ads_outputs.append(ads_result)
     irrelevant_outputs.append(irrelevant_result)
     no_visit_rant_outputs.append(no_visit_rant_result)
     sensibility_outputs.append(sensibility_result)
     
-    # Process image analysis
+    # Process image analysis (most computationally expensive step)
     image_result = process_images_for_review(review, business_info, pics)
     image_outputs.append(image_result)
 
+# Record end time and calculate total processing time
 pipeline_end_time = time.time()
 total_pipeline_time = pipeline_end_time - pipeline_start_time
 
-# Create boolean columns for violations
+# =============================================================================
+# Results Processing and DataFrame Updates
+# =============================================================================
+# Convert LLM outputs to boolean columns for easy analysis and filtering
+
+# Create boolean columns for text-based violations
 df["is_text_ad"] = [o["is_ad"] for o in ads_outputs]
 df["is_text_rant"] = [o["is_no_visit_rant"] for o in no_visit_rant_outputs]
 
-# Create boolean columns for image analysis
+# Create boolean columns for image analysis results
 df["is_image_ad"] = [o["is_image_ad"] for o in image_outputs]
 df["is_image_irrelevant"] = [o["is_image_irrelevant"] for o in image_outputs]
 
 # Create text irrelevance column
 df["is_text_irrelevant"] = [o["is_irrelevant"] for o in irrelevant_outputs]
 
-# Create sensibility column
+# Create sensibility column for sentiment-rating consistency
 df["sensibility"] = [o["is_sensible"] for o in sensibility_outputs]
 
 # Create helpfulness column based on LLM evaluation of added value
+# This is a separate pass through the data for the helpfulness metric
 df["helpfulness"] = [llm_evaluate_helpfulness(row.get("text", ""), create_business_info(row)) for _, row in df.iterrows()]
 
-# Print timing statistics
+# =============================================================================
+# Performance Reporting and Output
+# =============================================================================
+
+# Print timing statistics for performance monitoring
+# This helps identify bottlenecks and optimize the pipeline
 print("=== TIMING STATISTICS ===")
 print(f"Total pipeline time: {total_pipeline_time:.2f} seconds")
 print(f"Number of reviews processed: {len(ads_outputs)}")
 print(f"Average time per review: {total_pipeline_time/len(ads_outputs):.2f} seconds")
 
-
-
-# Save the pipeline output
+# Save the processed results to CSV for dashboard consumption
+# This preserves all original data plus the new classification columns
 df.to_csv("dashboard_output.csv", index=False)
 
+# Display a preview of the results for verification
 print("\n=== Final Output Preview ===")
 print(df[["text", "is_text_ad", "is_text_rant", "is_text_irrelevant", "sensibility", "is_image_ad", "is_image_irrelevant", "helpfulness"]].head(10))
+
+# Provide detailed column descriptions for users
 print("\n=== Column Descriptions ===")
 print("- is_text_ad: Boolean - review contains advertisement content")
 print("- is_text_rant: Boolean - review is a rant without actual visit")

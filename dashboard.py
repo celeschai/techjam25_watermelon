@@ -1,3 +1,42 @@
+# =============================================================================
+# Streamlit Dashboard for Business Review Moderation Pipeline
+# =============================================================================
+# This dashboard provides an interactive web interface for the Gemma-based
+# business review moderation pipeline, enabling users to upload CSV files
+# and visualize results in real-time.
+#
+# Purpose:
+# - Provide user-friendly interface for the ML pipeline
+# - Enable real-time upload and processing of review datasets
+# - Visualize policy violations, helpfulness metrics, and temporal trends
+# - Offer downloadable results for further analysis
+#
+# Key Features:
+# - Drag-and-drop CSV upload with robust validation
+# - Real-time backend processing via gemma_pipeline_dashboard.py
+# - Interactive visualizations of policy violations and helpfulness
+# - Temporal analysis of reviews over time
+# - Comprehensive error handling and user feedback
+# - Downloadable processed results
+#
+# Architecture:
+# - Frontend: Streamlit web interface
+# - Backend: Python subprocess execution of ML pipeline
+# - Data Flow: CSV upload → dashboard.csv → ML processing → dashboard_output.csv → visualization
+# - Integration: Seamless connection between UI and ML pipeline
+#
+# Input Requirements:
+# - CSV with columns: user_id, time, rating, text, pics_collapsed, name, category
+# - Supports various encodings (UTF-8, Latin-1) for robustness
+# - Handles missing data gracefully
+#
+# Output Features:
+# - Policy violation counts and summaries
+# - Helpfulness rating distributions
+# - Temporal review patterns
+# - Processed CSV download with all ML-generated columns
+# =============================================================================
+
 import io
 import os
 import subprocess

@@ -1,4 +1,34 @@
 #!/usr/bin/env python3
+# =============================================================================
+# Test File Preparation Script for Business Review Moderation Pipeline
+# =============================================================================
+# This script prepares test and validation datasets for the Gemma-based review
+# moderation pipeline by splitting CSV files into non-overlapping subsets.
+#
+# Purpose:
+# - Randomize review data to ensure unbiased testing of the ML pipeline
+# - Create reproducible train/validation splits for model evaluation
+# - Handle different CSV formats and encoding issues robustly
+# - Provide controlled dataset sizes for pipeline performance testing
+#
+# Key Features:
+# - Configurable test and validation set sizes
+# - Reproducible randomization with seed control
+# - Robust CSV reading with multiple encoding fallbacks
+# - Automatic output directory creation
+# - Comprehensive error handling and validation
+#
+# Usage:
+#   python test_file_prep.py input.csv test_size val_size [--output-dir DIR] [--seed SEED]
+#
+# Example:
+#   python test_file_prep.py vt_merged.csv 1000 500 --output-dir ./splits --seed 42
+#
+# Output:
+# - input_test.csv: Test dataset for pipeline evaluation
+# - input_validation.csv: Validation dataset for model tuning
+# =============================================================================
+
 """
 Script to split a CSV file into non-overlapping test and validation sets.
 Takes a CSV file, shuffles the data, and outputs two separate CSV files.
