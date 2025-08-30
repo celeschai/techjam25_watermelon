@@ -58,11 +58,13 @@ def split_csv(input_file, test_size, val_size, output_dir=".", seed=None):
     test_file = os.path.join(output_dir, f"{input_stem}_test.csv")
     val_file = os.path.join(output_dir, f"{input_stem}_validation.csv")
     
-    # Save the splits
+    # Save the splits (headers are automatically preserved)
     print(f"Saving test set ({len(test_df)} rows) to: {test_file}")
+    print(f"  Columns: {list(test_df.columns)}")
     test_df.to_csv(test_file, index=False)
     
     print(f"Saving validation set ({len(val_df)} rows) to: {val_file}")
+    print(f"  Columns: {list(val_df.columns)}")
     val_df.to_csv(val_file, index=False)
     
     # Print summary

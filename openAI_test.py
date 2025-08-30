@@ -116,7 +116,7 @@ def create_fallback_response():
 
 def main():
     """Main function to process the CSV file."""
-    input_file = 'vt_merged.csv'
+    input_file = 'sample_input.csv'
     output_file = 'openAI_output.csv'
     
     # Set row limit - change this number to process fewer rows
