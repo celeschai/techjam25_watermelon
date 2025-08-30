@@ -29,11 +29,11 @@ The system processes Google Reviews data from Vermont, USA, and provides both a 
 ## Data Collection and Preprocessing
 
 ### 1. Data Sources
-- **Reviews Dataset**: 324,725 Google Reviews from Vermont businesses
+- **Reviews Dataset**: Google Reviews from Vermont businesses
   - Source: `https://mcauleylab.ucsd.edu/public_datasets/gdrive/googlelocal/review-Vermont_10.json.gz`
   - Columns: user_id, time, rating, text, pics, resp, gmap_id
   
-- **Business Metadata**: 11,291 business locations
+- **Business Metadata**: Business location information
   - Source: `https://mcauleylab.ucsd.edu/public_datasets/gdrive/googlelocal/meta-Vermont.json.gz`
   - Columns: name, address, category, description, coordinates, etc.
 
@@ -62,7 +62,7 @@ The system processes Google Reviews data from Vermont, USA, and provides both a 
 ### 4. Final Dataset Structure
 - **Input Columns**: review_id, user_id, time, rating, text, pics_collapsed, name, category
 - **Output Columns**: All input + policy violation flags + quality metrics
-- **Filtering**: Removed reviews with only ratings (no text/images) - reduces dataset by ~45%
+- **Filtering**: Removed reviews with only ratings (no text/images) - reduces dataset size
 
 ## Modeling and Policy Enforcement
 
@@ -140,13 +140,20 @@ export HF_TOKEN=your_token_here
 ### 3. Model Download
 The pipeline automatically downloads the Gemma-3-4B-IT model on first run (~8GB).
 
-### 4. Data Preparation
+### 4. File Path Configuration
+**Important**: Before running the pipeline, update the input file path in `gemma_pipeline.py`:
+```python
+# Line ~76 in gemma_pipeline.py
+df = pd.read_csv("your_input_file.csv")  # Change this to your CSV file path
+```
+
+### 5. Data Preparation
 ```bash
 # Open and run all cells in the data processing notebook
 # Open data_processing.ipynb in Jupyter and run all cells sequentially
 
 # Or use the test file preparation script
-python test_file_prep.py vt_merged.csv 1000 500 --output-dir ./splits
+python test_file_prep.py input.csv 1000 500 --output-dir ./splits
 ```
 
 ## Usage
@@ -154,7 +161,7 @@ python test_file_prep.py vt_merged.csv 1000 500 --output-dir ./splits
 ### 1. Standalone Pipeline
 ```bash
 # Process validation dataset
-# Note: Update the input file path in gemma_pipeline.py (line ~80)
+# Note: Update the input file path in gemma_pipeline.py 
 python gemma_pipeline.py
 
 # Output: pipeline_output.csv with all analysis results
@@ -187,11 +194,11 @@ python test_file_prep.py input.csv 1000 500 --seed 42
 ```python
 # 1. Download raw data
 # 2. Run data_processing.ipynb cells sequentially
-# 3. Verify output files: vt_merged.csv, vt_metadata.csv
+# 3. Verify output files are generated correctly
 
 # Expected outputs:
-# - Reviews: ~178,000 rows (after filtering)
-# - Columns: 20+ including policy flags
+# - Processed reviews dataset with policy flags
+# - Business metadata with enriched information
 ```
 
 ### 2. Model Training Reproduction
@@ -211,7 +218,7 @@ python gemma_pipeline.py
 # 1. Launch dashboard
 streamlit run dashboard.py
 
-# 2. Upload vt_merged.csv
+# 2. Upload your processed CSV file
 # 3. Wait for backend processing
 # 4. View results in interactive interface
 ```
@@ -219,13 +226,13 @@ streamlit run dashboard.py
 ## Performance Characteristics
 
 ### Processing Speed
-- **Text Analysis**: ~1-2 seconds per review
-- **Image Analysis**: ~3-5 seconds per image (limited to 3 images per review)
+- **Text Analysis**: Several seconds per review
+- **Image Analysis**: Several seconds per image (limited to first few images per review)
 - **Total Pipeline**: Varies by dataset size and hardware
 
 ### Resource Requirements
 - **Memory**: 8GB+ RAM recommended
-- **Storage**: 10GB+ for model and data
+- **Storage**: Several GB for model and data
 - **GPU**: MPS (Apple Silicon) or CUDA for acceleration
 
 ### Accuracy Metrics
@@ -245,10 +252,8 @@ streamlit run dashboard.py
 ├── test_file_prep.py                  # Dataset splitting utilities
 ├── dashboard.py                       # Streamlit dashboard interface
 ├── .env                               # Environment variables (create this)
-└── data/                              # Data files (not in repo)
-    ├── vt_merged.csv                  # Processed dataset
-    ├── vt_metadata.csv                # Business metadata
-    └── imagecategories.csv            # Scraped business data
+├── processed_dataset.csv              # Processed dataset
+└── imagecategories.csv                # Scraped business data
 ```
 
 ## Input/Output Schemas
