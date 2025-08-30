@@ -9,7 +9,6 @@ from io import BytesIO
 from dotenv import load_dotenv
 from huggingface_hub import login
 from keywords_examples import irrelevant_reviews, non_visitor_reviews, spam_reviews
-from keywords_examples import irrelevant_keywords, non_visitor_keywords, spam_keywords
 import pandas as pd
 import torch
 from transformers import AutoProcessor, AutoTokenizer, pipeline
@@ -34,11 +33,11 @@ pipe = pipeline(
     device=device                 # works for CPU/"mps"/cuda in recent Transformers
 )
 
-df = pd.read_csv("sample_input.csv")   # must have "review_text" column
+df = pd.read_csv("vt_merged_validation.csv")   # must have "review_text" column
 df = df.head(10)
 
 tokenizer = AutoTokenizer.from_pretrained(model_id)
-POLICIES = ["ads", "irrelevant", "no_visit_rant", "no_violation"]
+POLICIES = ["ads", "irrelevant", "no_visit_rant"]
 
 SYSTEM_PROMPT = (
     "You are a moderation system for business reviews.\n"
@@ -46,7 +45,6 @@ SYSTEM_PROMPT = (
     "- ads (advertisement or promotional content)\n"
     "- irrelevant (talks about unrelated topics)\n"
     "- no_visit_rant (complaints/rants without actual visit)\n"
-    "- no_violation (valid review)\n\n"
     
     "Examples of ads violations:\n"
     f"{chr(10).join(['• ' + review[:100] + '...' for review in spam_reviews[:3]])}\n\n"
@@ -63,7 +61,7 @@ SYSTEM_PROMPT = (
     'Keep rationale to one clear sentence. For is_text_irrelevant, evaluate if the text is irrelevant or unrelated to the business/location info:\n'
     '- true: text is irrelevant or unrelated to the business/location\n'
     '- false: text is relevant and related to the business/location\n\n'
-    'For sensibility: Given the rating out of 5, does the user\'s attitude through the text actually align with their rating? true if aligned, false if not aligned.'
+    'For sensibility: Given the rating out of 5, does the user\'s attitude through the text actually align with their rating? If they sound positive and rating is abpve 2.5 - true as aligned, otherwise, false as not aligned.'
 )
 
 IMAGE_ANALYSIS_PROMPT = (
@@ -157,13 +155,95 @@ def create_business_info(row):
     if pd.notna(row.get("category")) and str(row.get("category")).strip():
         parts.append(f"Category: {str(row.get('category')).strip()}")
     
+    # Check if description is empty and use image to generate one if available
     if pd.notna(row.get("description")) and str(row.get("description")).strip():
         parts.append(f"Description: {str(row.get('description')).strip()}")
+    elif pd.notna(row.get("image")) and str(row.get("image")).strip():
+        # Generate description from image using Gemma
+        image_url = str(row.get("image")).strip()
+        print(f"Generating description from image for business: {row.get('name', 'Unknown')}")
+        generated_description = generate_description_from_image(image_url)
+        if generated_description:
+            parts.append(f"Description: {generated_description}")
+            print(f"Generated description: {generated_description}")
+        else:
+            print(f"Failed to generate description from image")
     
     if not parts:
         return "Location Information: Not available"
     
     return "\n".join(parts)
+
+def generate_description_from_image(image_url):
+    """Use Gemma to generate a business description from an image"""
+    global description_cache
+    
+    if not image_url or pd.isna(image_url):
+        return None
+    
+    # Check cache first
+    if image_url in description_cache:
+        print(f"Using cached description for image: {image_url[:50]}...")
+        return description_cache[image_url]
+    
+    # Download the image
+    image = download_image(image_url)
+    if image is None:
+        return None
+    
+    # Create prompt for business description generation
+    DESCRIPTION_PROMPT = (
+        "You are analyzing an image of a business or location.\n"
+        "Based on what you see in the image, provide a brief, factual description of this business or location.\n"
+        "Focus on:\n"
+        "- What type of business this appears to be\n"
+        "- What services or products they likely offer\n"
+        "- The overall atmosphere or setting\n"
+        "- Any distinctive features visible\n\n"
+        "Keep your description to 1-2 sentences maximum. Be factual and avoid speculation.\n"
+        "Respond with ONLY the description text, no additional formatting or explanations."
+    )
+    
+    messages = [
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": DESCRIPTION_PROMPT}]
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Please describe this business or location based on the image:"},
+                {"type": "image", "image": image}
+            ]
+        }
+    ]
+    
+    try:
+        prompt = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+        
+        out = pipe(
+            prompt,
+            max_new_tokens=128,
+            return_full_text=False
+        )
+        
+        generated_description = out[0]["generated_text"].strip()
+        
+        # Clean up the response - remove any quotes or extra formatting
+        generated_description = generated_description.strip('"').strip("'")
+        
+        # Cache the result
+        description_cache[image_url] = generated_description
+        
+        return generated_description
+        
+    except Exception as e:
+        print(f"Error generating description from image: {e}")
+        return None
 
 def llm_evaluate_helpfulness(review_text: str, business_info: str) -> str:
     """Use LLM to evaluate overall helpfulness based on added value compared to basic Google info"""
@@ -307,7 +387,8 @@ def process_images_for_review(review_text: str, business_info: str, pics_collaps
         any_ad = False
         any_irrelevant = False
         
-        for url in urls:
+        # Process only the first 3 images to limit processing time
+        for i, url in enumerate(urls[:3]):
             if url and url.strip():
                 result = llm_analyze_image(review_text, business_info, url.strip())
                 image_results.append(result)
@@ -337,6 +418,9 @@ def process_images_for_review(review_text: str, business_info: str, pics_collaps
 pipeline_start_time = time.time()
 outputs = []
 image_outputs = []
+
+# Cache for generated descriptions to avoid regenerating the same image descriptions
+description_cache = {}
 
 for _, row in df.iterrows():
     review = row.get("text", "")
