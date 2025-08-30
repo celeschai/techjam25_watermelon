@@ -58,3 +58,4 @@ profile_default/
 # But allow these specific CSVs
 !test_dashboard.csv
 !imagecategories.csv
+!sample_gt.csv
