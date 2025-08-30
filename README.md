@@ -30,6 +30,13 @@ The system processes Google Reviews data from Vermont, USA, and provides both a 
 - **Interactive Dashboard**: Real-time CSV upload and processing via Streamlit
 - **Robust Processing**: Handles missing data, encoding issues, and network failures gracefully
 
+## Demo Video
+
+🎥 **Watch the Dashboard in Action**
+
+See ReviewGuard's interactive dashboard processing reviews in real-time:
+- [Dashboard Demo Video](link-to-your-video-here) *(Coming Soon)*
+
 ## Data Collection and Preprocessing
 
 ### 1. Data Sources
