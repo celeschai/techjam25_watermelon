@@ -33,7 +33,16 @@ pipe = pipeline(
     device=device                 # works for CPU/"mps"/cuda in recent Transformers
 )
 
-df = pd.read_csv("vt_merged_validation.csv")   # must have "review_text" column
+# Read from dashboard input
+try:
+    df = pd.read_csv("dashboard.csv")
+    print(f"Successfully loaded dashboard.csv with {len(df)} rows")
+except FileNotFoundError:
+    print("Error: dashboard.csv not found. Please ensure the dashboard has uploaded a CSV file.")
+    exit(1)
+except Exception as e:
+    print(f"Error reading dashboard.csv: {e}")
+    exit(1)
 
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 POLICIES = ["ads", "irrelevant", "no_visit_rant"]
@@ -512,7 +521,7 @@ print(f"Average time per review: {total_pipeline_time/len(ads_outputs):.2f} seco
 
 
 # Save the pipeline output
-df.to_csv("pipeline_output.csv", index=False)
+df.to_csv("dashboard_output.csv", index=False)
 
 print("\n=== Final Output Preview ===")
 print(df[["text", "is_text_ad", "is_text_rant", "is_text_irrelevant", "sensibility", "is_image_ad", "is_image_irrelevant", "helpfulness"]].head(10))

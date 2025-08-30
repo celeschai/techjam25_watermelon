@@ -22,8 +22,8 @@ POLICY_BOOL_COLS = ["is_text_rant","is_review_ad","is_review_irrelevant"]
 HELPFULNESS_ORDER = ["very_helpful", "helpful", "not_helpful"]
 
 INPUT_SAVE_PATH = "dashboard.csv"
-PIPELINE_OUT_PATH = "pipeline_output.csv"
-BACKEND_SCRIPT = "gemma_pipeline.py"   # ensure this is available in the same directory or give full path
+PIPELINE_OUT_PATH = "dashboard_output.csv"
+BACKEND_SCRIPT = "gemma_pipeline_dashboard.py"   # ensure this is available in the same directory or give full path
 
 # ==============================
 # Helpers
@@ -241,9 +241,9 @@ try:
         try:
             with open(PIPELINE_OUT_PATH, "rb") as f:
                 st.download_button(
-                    "Download pipeline_output.csv",
+                    "Download output csv",
                     data=f,
-                    file_name="pipeline_output.csv",
+                    file_name="dashboard_download_output.csv",
                     mime="text/csv"
                 )
         except Exception as e:
