@@ -1,4 +1,8 @@
-# Business Review Moderation Pipeline
+# ReviewGuard: Multimodal Business Review Moderation
+
+AI-powered pipeline that detects spam, irrelevance, and low-quality reviews across text and images—helping businesses and users cut through the noise of information overload.
+
+---
 
 A comprehensive machine learning pipeline for automatically detecting policy violations and evaluating review quality in business reviews using Google's Gemma-3-4B-IT multimodal model.
 
@@ -331,4 +335,41 @@ For questions, issues, or contributions:
 
 ---
 
-*This README provides a comprehensive overview of the Business Review Moderation Pipeline. For detailed implementation specifics, refer to the individual Python files and Jupyter notebooks.*
+## About the Project
+
+### 🌟 Inspiration
+
+We were inspired to tackle this challenge because none of us had prior experience with multimodal machine learning tools like Google's Gemma-3-4B-IT. As a team of two computer science majors and two data science majors—we wanted to step outside our comfort zones and build something impactful. In today's world, where information overload and spammy reviews make it difficult to trust online platforms, we felt this problem was both timely and meaningful.
+
+### 🛠 How We Built It
+
+Our project integrates a comprehensive ML pipeline with an interactive Streamlit dashboard:
+1. **Data Collection & Cleaning** – Processed Google Reviews data from Vermont, merging metadata and images.
+2. **Multimodal Modeling** – Used Gemma-3-4B-IT for analyzing both review text and images.
+3. **Policy Violation Detection** – Classified ads, irrelevant content, and non-visitor rants with structured JSON outputs.
+4. **Quality Metrics** – Measured review helpfulness and checked for sentiment-rating consistency.
+5. **Dashboard** – Built an easy-to-use Streamlit app for real-time CSV uploads and visualization.
+
+### 📚 What We Learned
+- How to engineer prompts for LLMs to enforce structured outputs.
+- The importance of data preprocessing pipelines when handling messy, real-world data.
+- Hands-on experience deploying a multimodal ML model on limited hardware (balancing between MPS, CUDA, and CPU).
+- Collaborative coding practices—merging different expertise in computer science and data science into one project.
+
+### 🚧 Challenges We Faced
+- **Model Constraints**: Running an 8GB model with limited memory and ensuring reasonable processing speeds.
+- **Multimodal Complexity**: Handling both image and text input required non-trivial preprocessing and validation.
+- **Consistency**: Designing outputs that were structured, reliable, and interpretable for downstream use.
+- **Team Learning Curve**: None of us had prior experience with Gemma or Streamlit, so we had to learn everything from scratch during the hackathon.
+
+### 🎉 Joy
+
+Beyond the technical milestones, what stood out most was the joy of working together as a team.
+- Everyone remained patient and supportive, even when things broke or progress was slow.
+- At our lowest moments of disappointment, we respected each other, talked things through, and kept moving forward.
+- We tackled every problem together and celebrated every small win as a team.
+- For us, it wasn't about the prize—it was about learning side by side, witnessing each other's growth, grit, and resilience throughout the hackathon.
+
+---
+
+*This README provides a comprehensive overview of ReviewGuard: Multimodal Business Review Moderation. For detailed implementation specifics, refer to the individual Python files and Jupyter notebooks.*

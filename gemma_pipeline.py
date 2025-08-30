@@ -245,27 +245,6 @@ def _extract_first_json(s: str):
     except json.JSONDecodeError:
         return {}
 
-def _bool_map_from_list(labels):
-    """
-    Turn a list like ['ads', 'irrelevant'] into a full bool map with exclusivity rule for no_violation.
-    
-    Args:
-        labels (list): List of violation labels
-        
-    Returns:
-        dict: Boolean map with all policy flags and no_violation flag
-        
-    Note: The no_violation flag is True only if none of the violation flags are True,
-    implementing an exclusivity rule that ensures each review is classified exactly once.
-    """
-    flags = {k: False for k in POLICIES}
-    for lab in labels:
-        if lab in flags and lab != "no_violation":
-            flags[lab] = True
-    # no_violation is True only if none of the violation flags are True
-    flags["no_violation"] = not (flags["ads"] or flags["irrelevant"] or flags["no_visit_rant"])
-    return flags
-
 def create_business_info(row):
     """
     Create business information string from row data for context
