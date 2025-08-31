@@ -239,13 +239,12 @@ The `Performance Evaluation Folder/` contains comprehensive evaluation tools and
 ### 2. Model Training Reproduction
 ```bash
 # 1. Set HF_TOKEN in .env
-# 2. Run pipeline on validation set
+# 2. Set input and output file path 
+# 3. Run pipeline on validation set
 python gemma_pipeline.py
 
 # Expected outputs:
 # - Processing time: ~X seconds per review
-# - Policy violation counts
-# - Quality metric distributions
 ```
 
 ### 3. Dashboard Reproduction
@@ -368,6 +367,18 @@ For questions, issues, or contributions:
 2. Review existing issues and discussions
 3. Create a new issue with detailed information
 4. Contact the development team
+
+## ⚠️ Disclaimer
+
+This project was developed and tested on an **Apple M3 chip using Metal Performance Shaders (MPS)** for acceleration.  
+It has **not been tested on CUDA (NVIDIA GPUs)**, and performance or stability on CUDA hardware may vary.  
+
+- On **MPS (Apple Silicon)**: Model runs smoothly with bfloat16 precision.  
+- On **CPU-only setups**: The pipeline runs but will be significantly slower.  
+
+If you encounter issues running on non-M3 hardware, please check the Hugging Face 
+[transformers documentation](https://huggingface.co/docs/transformers/index) and adjust 
+the `device` argument (`"cpu"`, `"mps"`, or `"cuda"`) as needed.
 
 ---
 
